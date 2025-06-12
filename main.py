@@ -7,6 +7,7 @@ grid = []
 collectibles = []
 num_collected = 0
 total_collectibles = 1
+collectible_cap=30
 collected_since_spawn = 0
 max_collectibles_on_map = 10
 respawn_threshold = 3
@@ -14,7 +15,7 @@ respawn_amount = 3
 flashing_collectible_index = 0
 difficulty_increased = 1
 player_x = player_y = 0
-player_size = cell_size//2
+player_size = cell_size//2-2
 player_speed = 2
 num_enemies = 30
 enemy_positions = []
@@ -109,14 +110,67 @@ def can_move(x, y, size):
             if gx < 0 or gx >= cols or gy < 0 or gy >= rows or grid[gx][gy] == 1:
                 return False
     return True
+def game(level,enemy_count):
+    global timer, page, difficulty_increased
+    if frameCount % 30 == 0:
+        timer += 1
+    
+    time_remaining = max(0, time_limit - timer)
+    fill(255)
+    textSize(20)
+    textAlign(LEFT, BOTTOM)
+    text("Time Left: " + str(time_remaining), 10, height - 10)
 
+    move_player()
+    move_enemies()
+    
+    offset_x = (width - cols * cell_size) // 2
+    offset_y = (height - rows * cell_size) // 2 - 30
+    draw_grid(offset_x, offset_y)
+    
+    if collectibles:
+        cx, cy = collectibles[flashing_collectible_index]
+        if (frameCount // 15) % 2 == 0:
+            fill(0, 255, 0)
+        else:
+            fill(0)
+        rect(offset_x + cx - 5, offset_y + cy - 5, 10, 10)
+    fill(255, 0, 0)
+    rectMode(CENTER)
+    rect(offset_x + player_x, offset_y + player_y, player_size, player_size)
+
+    fill(0, 0, 255)
+    for ex, ey in enemy_positions:
+        rect(offset_x + ex, offset_y + ey, enemy_size, enemy_size)
+    rectMode(CORNER)
+
+    fill(255)
+    textAlign(LEFT, TOP)
+    textSize(18)
+    text("Collected: " + str(num_collected) + "/" + str(total_collectibles), 10, 10)
+
+    if time_remaining <= 0:
+        page = "Give Up"
+
+    for ex, ey in enemy_positions:
+        if is_collision(player_x, player_y, player_size, ex, ey, enemy_size):
+            page = "Give Up"
+
+    if num_collected >= total_collectibles and difficulty_increased != 10:
+        increase_difficulty()
+        difficulty_increased +=1
+    
+    if num_collected == total_collectibles and difficulty_increased == 10:
+        page = "Win"
 def draw():
     global page, current_tutorial_step, tutorial_completed, timer
 
     background(102)
     if page == "Welcome":
         draw_menu()
-    elif page == "Page1" or page == "InteractiveTutorial":
+    elif page == "game":
+        game(difficulty_increased,num_enemies)
+    elif page == "InteractiveTutorial":
 
         if frameCount % 30 == 0:
             timer += 1
@@ -128,8 +182,6 @@ def draw():
         text("Time Left: " + str(time_remaining), 10, height - 10)
 
         move_player()
-        if page == "Page1":
-            move_enemies()
         offset_x = (width - cols * cell_size) // 2
         offset_y = (height - rows * cell_size) // 2 - 30
         draw_grid(offset_x, offset_y)
@@ -146,9 +198,6 @@ def draw():
         rectMode(CENTER)
         rect(offset_x + player_x, offset_y + player_y, player_size, player_size)
 
-        fill(0, 0, 255)
-        for ex, ey in enemy_positions:
-            rect(offset_x + ex, offset_y + ey, enemy_size, enemy_size)
         rectMode(CORNER)
 
         fill(255)
@@ -156,32 +205,14 @@ def draw():
         textSize(18)
         text("Collected: " + str(num_collected) + "/" + str(total_collectibles), 10, 10)
 
-        if time_remaining <= 0:
-            page = "Give Up"
 
-        for ex, ey in enemy_positions:
-            if is_collision(player_x, player_y, player_size, ex, ey, enemy_size):
-                page = "Give Up"
-
-        if num_collected >= total_collectibles and difficulty_increased != 10:
-            increase_difficulty()
-            difficulty_increased +=1
-        
-        if num_collected == total_collectibles and difficulty_increased == 10:
-            page = "Win"
-
-        if page == "Page1":
-            draw_button((width - 200) // 2, height - 80, 200, 50, "Give Up", False)
-
-        if page == "InteractiveTutorial":
-            fill(0)
-            textAlign(CENTER, CENTER)
-            textSize(30)
-            if current_tutorial_step < len(tutorial_steps):
-                text(tutorial_steps[current_tutorial_step]["text"], width // 2, height-35)
-            else:
-                tutorial_completed = True
-                page = "tutorial_complete"
+        fill(0)
+        textAlign(CENTER, CENTER)
+        textSize(30)
+        if current_tutorial_step < len(tutorial_steps):
+            text(tutorial_steps[current_tutorial_step]["text"], width // 2, height-35)
+        else:
+            page = "InteractiveTutorialComplete"
             
 
     elif page == "Give Up":
@@ -192,7 +223,8 @@ def draw():
         text("GAME OVER", width // 2, height // 2 - 50)
         textSize(30)
         text("You were caught by the enemy or ran out of time!", width // 2, height // 2 + 20)
-    elif page == "tutorial_complete":
+    
+    elif page == "InteractiveTutorialComplete":
         background('#C5D0FA')
         textAlign(CENTER, CENTER)
         fill('#080808')
@@ -320,143 +352,12 @@ def spawn_new_collectibles(n):
     if collectibles:
         flashing_collectible_index = random.randint(0, len(collectibles) - 1)
 
-def keyPressed():
-    keys_pressed.add(key.lower())
-    global current_tutorial_step, page
-    if page == "InteractiveTutorial" and current_tutorial_step < len(tutorial_steps):
-        step = tutorial_steps[current_tutorial_step]
-        if step["key"] is None or key.lower() == step["key"]:
-            current_tutorial_step += 1
-
-def keyReleased():
-    keys_pressed.discard(key.lower())
-
-def mouseClicked():
-    global page, current_tutorial_step, tutorial_completed
-    if page == "Welcome":
-        if 50 < mouseX < 250:
-            if 250 < mouseY < 300:
-                setup()
-                page = "Page1"
-            elif 400 < mouseY < 450:
-                exit()
-            elif 500 < mouseY < 550:
-                page = "Tutorial"
-            elif 600 < mouseY < 650:
-                setup()
-                current_tutorial_step = 0
-                tutorial_completed = False
-                page = "InteractiveTutorial"
-    elif page in ["Give Up", "Tutorial", "Win"]:
-        page = "Welcome"
-    elif page == "Give Up":
-        if width // 2 - 100 < mouseX < width // 2 + 100 and height // 2 + 80 < mouseY < height // 2 + 130:
-            setup()
-            page = "Page1"
-            textSize(30)
-            if current_tutorial_step < len(tutorial_steps):
-                text(tutorial_steps[current_tutorial_step]["text"], width // 2, height-35)
-            else:
-                text("Tutorial Complete! Click to return.", width // 2, height-35)
-                tutorial_completed = True
-          
-
-    elif page == "Give Up":
-        background('#FF0000')
-        textAlign(CENTER, CENTER)
-        fill('#080808')
-        textSize(120)
-        text("GAME OVER", width // 2, height // 2 - 50)
-        textSize(30)
-        text("You were caught by the enemy!", width // 2, height // 2 + 20)
-
-    elif page == "Tutorial":
-        background(220)
-        fill(0)
-        textAlign(CENTER)
-        textSize(40)
-        text("Tutorial", width // 2, 80)
-        textSize(25)
-        lines = [
-            "Controls:",
-            "- Use W, A, S, D to move.",
-            "- Avoid walls and the enemy.",
-            "- Only collect the flashing green cube!",
-            "- If the enemy touches you, you lose.",
-            "",
-            "Click to play!"
-        ]
-        for i, line in enumerate(lines):
-            text(line, width // 2, 150 + i * 35)
-
-    elif page == "Win":
-        background(0, 200, 0)
-        fill(255)
-        textAlign(CENTER, CENTER)
-        textSize(60)
-        text("You collected all cubes!", width // 2, height // 2)
-        textSize(30)
-        text("Click to return to menu.", width // 2, height // 2 + 60)
-    if time_remaining <= 0:
-        page = "Give Up"
-
 def draw_grid(offset_x, offset_y):
     for i in range(cols):
         for j in range(rows):
             fill(200 if grid[i][j] == 0 else 50)
             rect(offset_x + i * cell_size, offset_y + j * cell_size, cell_size, cell_size)
 
-def draw_menu():
-    draw_button(50, 250, 200, 50, "Start", 50 < mouseX < 250 and 250 < mouseY < 300)
-    draw_button(50, 400, 200, 50, "Quit", 50 < mouseX < 250 and 400 < mouseY < 450)
-    draw_button(50, 500, 200, 50, "Tutorial", 50 < mouseX < 250 and 500 < mouseY < 550)
-    draw_button(50, 600, 200, 50, "Interactive Tutorial", 50 < mouseX < 250 and 600 < mouseY < 650)
-
-def draw_button(x, y, w, h, label, hover):
-    fill(0, 100, 255) if hover else fill(0, 0, 255)
-    rect(x, y, w, h)
-    fill(255)
-    textSize(30)
-    textAlign(CENTER, CENTER)
-    text(label, x + w // 2, y + h // 2)
-
-def move_player():
-    global player_x, player_y
-    dx = dy = 0
-    if 'w' in keys_pressed:
-        dy -= player_speed
-    if 's' in keys_pressed:
-        dy += player_speed
-    if 'a' in keys_pressed:
-        dx -= player_speed
-    if 'd' in keys_pressed:
-        dx += player_speed
-    if can_move(player_x + dx, player_y, player_size):
-        player_x += dx
-    if can_move(player_x, player_y + dy, player_size):
-        player_y += dy
-    check_collectibles()
-
-def move_enemies():
-    global enemy_positions, enemy_dirs
-    for i in range(len(enemy_positions)):
-        if frameCount % 20 == 0:
-            enemy_dirs[i] = random.choice(['up', 'down', 'left', 'right'])
-        dx = dy = 0
-        if enemy_dirs[i] == 'up':
-            dy = -enemy_speed
-        elif enemy_dirs[i] == 'down':
-            dy = enemy_speed
-        elif enemy_dirs[i] == 'left':
-            dx = -enemy_speed
-        elif enemy_dirs[i] == 'right':
-            dx = enemy_speed
-        x, y = enemy_positions[i]
-        if can_move(x + dx, y + dy, enemy_size):
-            enemy_positions[i] = (x + dx, y + dy)
-
-def is_collision(x1, y1, size1, x2, y2, size2):
-    return abs(x1 - x2) < (size1 + size2) / 2 and abs(y1 - y2) < (size1 + size2) / 2
 
 def check_collectibles():
     global num_collected, collectibles, collected_since_spawn, flashing_collectible_index
@@ -499,12 +400,10 @@ def keyPressed():
             current_tutorial_step += 1
             
 def increase_difficulty():
-    global num_enemies, difficulty_increased
-    num_enemies == num_enemies*2
-    time_limit = time_limit+60
+    global num_enemies, difficulty_increased, time_limit
+    num_enemies = num_enemies * 2
+    time_limit += 60
     place_enemies(num_enemies)
-    difficulty_increased = True
-    
 def keyReleased():
     keys_pressed.discard(key.lower())
 
@@ -514,7 +413,7 @@ def mouseClicked():
         if 50 < mouseX < 250:
             if 250 < mouseY < 300:
                 setup()
-                page = "Page1"
+                page = "game"
             elif 400 < mouseY < 450:
                 exit()
             elif 500 < mouseY < 550:
@@ -522,11 +421,6 @@ def mouseClicked():
             elif 600 < mouseY < 650:
                 setup()
                 current_tutorial_step = 0
-                tutorial_completed = False
                 page = "InteractiveTutorial"
-    elif page in ["Give Up", "Tutorial", "Win"]:
-        page = "Welcome"
-    elif page == "Give Up":
-        if width // 2 - 100 < mouseX < width // 2 + 100 and height // 2 + 80 < mouseY < height // 2 + 130:
-            setup()
-            page = "Page1"
+    elif page == "Give Up" or page == "InteractiveTutorialComplete" or page =="Win" or page =="Tutorial":
+            page = "Welcome"
