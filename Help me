@@ -313,6 +313,7 @@ class Game:
         
         self.check_collectibles()
 
+    # Checks if enemies are able to move
     def can_move(self, x, y, size):
         # Check all four corners of the player's bounding box
         corners = [
@@ -333,6 +334,7 @@ class Game:
                 return False
         return True
 
+    # Controls enemy movement
     def move_enemies(self):
         for i in range(len(self.enemies)):
             if frameCount % 20 == 0:
@@ -352,6 +354,7 @@ class Game:
             if self.can_move(x + dx, y + dy, ENEMY_SIZE):
                 self.enemies[i] = (x + dx, y + dy)
 
+    # Checks if collectible should be picked up
     def check_collectibles(self):
         if self.collectibles and dist(self.player_x, self.player_y, self.collectibles[0][0], self.collectibles[0][1]) < 10:
             self.num_collected += 1
@@ -362,6 +365,7 @@ class Game:
     def check_collision(self, x1, y1, size1, x2, y2, size2):
         return dist(x1, y1, x2, y2) < (size1 + size2) / 2
 
+    # Displays Tutorial instructions
     def draw_tutorial(self):
         background(220)
         fill(0)
@@ -413,6 +417,7 @@ class Game:
         textSize(30)
         text("Back", SCREEN_WIDTH/2, SCREEN_HEIGHT - 75)
     
+    # Draws lose screen + message
     def draw_game_over(self):
         background('#FF0000')
         textAlign(CENTER, CENTER)
@@ -422,6 +427,7 @@ class Game:
         textSize(30)
         text("Click to return to menu.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 20)
     
+    # Draws win screen + message
     def draw_win(self):
         background(0, 200, 0)
         fill(255)
@@ -431,6 +437,7 @@ class Game:
         textSize(30)
         text("Click to return to menu.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 20)
     
+    # Handles tutorial
     def run_interactive_tutorial(self):
         time_left = max(0, TIME_LIMIT - int(self.timer))
         
@@ -459,6 +466,7 @@ class Game:
         else:
             self.state = STATE_MENU
 
+    # Creates main menu (the home screen)
     def draw_menu(self):
         background(102)
         fill(0, 100, 255)
@@ -475,9 +483,11 @@ class Game:
             (SCREEN_WIDTH/2 - 100, 500, 200, 50, "Quit", -1)
         ]
         
+        # Creates the buttons
         for x, y, w, h, label, action in buttons:
             self.draw_button(x, y, w, h, label, action)
 
+    # Displays a new button on the screen with the given specifications
     def draw_button(self, x, y, w, h, label, action):
         hover = x <= mouseX <= x + w and y <= mouseY <= y + h
         fill(0, 100 if hover else 0, 255)
@@ -499,6 +509,7 @@ def draw():
     global game
     game.draw()
 
+# Detects mouse clicks and acts accordingly
 def mousePressed():
     global game
     if game.state == STATE_MENU:
@@ -542,6 +553,7 @@ def mousePressed():
         if SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and SCREEN_HEIGHT - 100 <= mouseY <= SCREEN_HEIGHT - 50:
             game.state = STATE_MENU
 
+# Keeps track of keys pressed
 def keyPressed():
     global game
 
