@@ -45,13 +45,13 @@ class Game:
         self.tutorial_step = 0
         self.flashing_collectible_index = 0
         
-        # Images
+        # Image lists, and varaibles are defined
         self.player_images = []
         self.selection_images = []
         self.wall_img = None
         self.floor_img = None
         
-        # Tutorial
+        # Tutorial steps with instructions and required key presses are set
         self.tutorial_steps = [
             {"text": "Press W to move UP", "key": "w"},
             {"text": "Press S to move DOWN", "key": "s"},
@@ -63,20 +63,24 @@ class Game:
         self.setup()
 
     def setup(self):
-        # Create fallback images
+        # In case problems occure with accessing the wall and floor images, they are set to solid coloured squares
         self.wall_img = self.create_color_image(CELL_SIZE, CELL_SIZE, color(100))
         self.floor_img = self.create_color_image(CELL_SIZE, CELL_SIZE, color(200))
+        
+        #The program loads the character images
         for i in range(1, 7):
             try:
+                #Attempts to load player image
                 img = loadImage("player_"+str(i)+".png")
                 img.resize(PLAYER_SIZE, PLAYER_SIZE)
                 self.player_images.append(img)
                 
+                #Attempts to load player image for character selection page
                 big_img = loadImage("player_"+str(i)+".png")
                 big_img.resize(100, 100)
                 self.selection_images.append(big_img)
             except:
-                # Create placeholder if image fails to load
+                # Creates placeholder if images fails to load
                 small_img = self.create_color_image(PLAYER_SIZE, PLAYER_SIZE, color(0, 0, 255))
                 big_img = self.create_color_image(100, 100, color(0, 0, 255))
                 self.player_images.append(small_img)
@@ -84,6 +88,7 @@ class Game:
         
         self.reset_game()
 
+    #creates a solid colour image of a given size and color, primarly used as back up in case images do not load
     def create_color_image(self, w, h, c):
         img = createImage(w, h, RGB)
         img.loadPixels()
@@ -92,22 +97,29 @@ class Game:
         img.updatePixels()
         return img
 
+
+    #resets game back to defult state
     def reset_game(self):
+        #creates a new maze
         self.grid = self.generate_maze()
+        #places player in the center of the maze
         self.player_x, self.player_y = self.cell_center(GRID_COLS // 2, GRID_ROWS // 2)
+        #Places initial enemies
         self.place_enemies(INITIAL_ENEMIES)
         self.place_collectibles(INITIAL_COLLECTIBLES)
+        #resets the difficulty, time, and collected count
         self.num_collected = 0
         self.timer = 0
         self.difficulty = 1
         self.total_collectibles = INITIAL_COLLECTIBLES
+        #choses a random collectible to start flashing
         if self.collectibles:
             self.flashing_collectible_index = random.randint(0, len(self.collectibles) - 1)
 
+    #Generates the maze
     def generate_maze(self):
         maze = [[1 for _ in range(GRID_ROWS)] for _ in range(GRID_COLS)]
         visited = [[False for _ in range(GRID_ROWS)] for _ in range(GRID_COLS)]
-
         def carve(x, y):
             maze[x][y] = 0
             visited[x][y] = True
@@ -121,25 +133,27 @@ class Game:
 
         carve(1, 1)
         
-        # Add borders
+        # Adds borders
         for i in range(GRID_COLS):
             maze[i][0] = maze[i][GRID_ROWS - 1] = 1
         for j in range(GRID_ROWS):
             maze[0][j] = maze[GRID_COLS - 1][j] = 1
             
-        # Make center open
+        # Makes the center open
         maze[GRID_COLS // 2][GRID_ROWS // 2] = 0
         
-        # Remove some random walls
+        # Remove some random walls to make it easier for the player
         walls = [(x, y) for x in range(1, GRID_COLS - 1) for y in range(1, GRID_ROWS - 1) if maze[x][y] == 1]
         for x, y in random.sample(walls, len(walls) // 5):
             maze[x][y] = 0
             
         return maze
 
+#returns the center of the maze in pixal cordinants
     def cell_center(self, cx, cy):
         return cx * CELL_SIZE + CELL_SIZE // 2, cy * CELL_SIZE + CELL_SIZE // 2
 
+#Places enamies in valid positions
     def place_enemies(self, count):
         self.enemies = []
         self.enemy_directions = []
@@ -147,29 +161,36 @@ class Game:
         for _ in range(count):
             placed = False
             while not placed:
+                #tries a random location
                 x = random.randint(1, GRID_COLS - 2)
                 y = random.randint(1, GRID_ROWS - 2)
+                #checks if position is valid
                 if self.grid[x][y] == 0 and (x != GRID_COLS // 2 or y != GRID_ROWS // 2):
                     pos = self.cell_center(x, y)
+                    #checks the distance to other enamies
                     if all(dist(pos[0], pos[1], e[0], e[1]) > 20 for e in self.enemies):
                         self.enemies.append(pos)
                         self.enemy_directions.append(random.choice(['up', 'down', 'left', 'right']))
                         placed = True
-
+    
+    #places collectibles at valid locations
     def place_collectibles(self, count):
         self.collectibles = []
         placed = False
         while not placed:
+            #tries random locaiton
             x = random.randint(1, GRID_COLS - 2)
             y = random.randint(1, GRID_ROWS - 2)
             if self.grid[x][y] == 0:
                 pos = self.cell_center(x, y)
+                #ensures it does not spawn nearby the player
                 if dist(pos[0], pos[1], self.player_x, self.player_y) > 20:
                     self.collectibles.append(pos)
                     placed = True
                     self.flashing_collectible_index = 0  # Since there's only one pellet
 
     def draw(self):
+        #main funtion, controls which page is shown
         if self.state == STATE_MENU:
             self.draw_menu()
         elif self.state == STATE_GAME:
@@ -186,6 +207,7 @@ class Game:
             self.draw_character_select()
 
     def run_game(self):
+        #runs main game logic
         fill("#7C7979")
         rect(4,15,95,55)
         # Update timer
@@ -227,7 +249,7 @@ class Game:
                 self.increase_difficulty()
             else:
                 self.state = STATE_WIN
-
+    #if all collectivles are consumed, difficulty increases
     def increase_difficulty(self):
         self.difficulty += 1
         new_enemies = int(INITIAL_ENEMIES * (1.5 ** (self.difficulty - 1)))
