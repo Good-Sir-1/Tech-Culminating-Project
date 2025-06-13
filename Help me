@@ -153,16 +153,16 @@ class Game:
 
     def place_collectibles(self, count):
         self.collectibles = []
-        for _ in range(count):
-            placed = False
-            while not placed:
-                x = random.randint(1, GRID_COLS - 2)
-                y = random.randint(1, GRID_ROWS - 2)
-                if self.grid[x][y] == 0:
-                    pos = self.cell_center(x, y)
-                    if dist(pos[0], pos[1], self.player_x, self.player_y) > 20:
-                        self.collectibles.append(pos)
-                        placed = True
+        placed = False
+        while not placed:
+            x = random.randint(1, GRID_COLS - 2)
+            y = random.randint(1, GRID_ROWS - 2)
+            if self.grid[x][y] == 0:
+                pos = self.cell_center(x, y)
+                if dist(pos[0], pos[1], self.player_x, self.player_y) > 20:
+                    self.collectibles.append(pos)
+                    placed = True
+                    self.flashing_collectible_index = 0  # Since there's only one pellet
 
     def draw(self):
         if self.state == STATE_MENU:
@@ -189,8 +189,8 @@ class Game:
         fill(255)
         textSize(20)
         textAlign(LEFT, TOP)
-        text("Collected: "+str(self.num_collected/self.total_collectibles), 20, 20)
-        text("Time: "+str(time_left), 20, 50)
+        text("Collected:"+str(self.num_collected/self.total_collectibles), 20, 20)
+        text("Time:"+str(time_left), 20, 50)
         
         # Game logic
         self.move_player()
@@ -227,7 +227,7 @@ class Game:
         self.total_collectibles = INITIAL_COLLECTIBLES + 5 * (self.difficulty - 1)
         self.num_collected = 0
         self.place_enemies(new_enemies)
-        self.place_collectibles(self.total_collectibles)
+        self.place_collectibles(1)  # Only place one pellet
         self.timer = max(self.timer, TIME_LIMIT - 30)
 
     def draw_grid(self, offset_x, offset_y):
@@ -324,14 +324,11 @@ class Game:
                 self.enemies[i] = (x + dx, y + dy)
 
     def check_collectibles(self):
-        for i, (cx, cy) in enumerate(self.collectibles[:]):
-            if dist(self.player_x, self.player_y, cx, cy) < 10:
-                if i == self.flashing_collectible_index:
-                    self.num_collected += 1
-                self.collectibles.pop(i)
-                if self.collectibles:
-                    self.flashing_collectible_index = random.randint(0, len(self.collectibles) - 1)
-                break
+        if self.collectibles and dist(self.player_x, self.player_y, self.collectibles[0][0], self.collectibles[0][1]) < 10:
+            self.num_collected += 1
+            self.collectibles.pop()
+            if self.num_collected < self.total_collectibles:
+                self.place_collectibles(1)  # Place new pellet if needed
 
     def check_collision(self, x1, y1, size1, x2, y2, size2):
         return dist(x1, y1, x2, y2) < (size1 + size2) / 2
@@ -412,7 +409,7 @@ class Game:
         fill(255)
         textSize(20)
         textAlign(LEFT, BOTTOM)
-        text("Time Left:"+str(time_left), 10, SCREEN_HEIGHT - 10)
+        text("Time Left: "+str(time_left), 10, SCREEN_HEIGHT - 10)
         
         # Game elements
         offset_x = (SCREEN_WIDTH - GRID_COLS * CELL_SIZE) // 2
@@ -516,8 +513,7 @@ def mousePressed():
 
 def keyPressed():
     global game
-    if key == ESC:
-        key = 0  # Disable ESC key from quitting
+
     game.keys_pressed.add(str(key).lower())
     
     if game.state == STATE_INTERACTIVE_TUTORIAL and game.tutorial_step < len(game.tutorial_steps):
