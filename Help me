@@ -1,0 +1,530 @@
+import random
+
+# Game Constants
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 700
+GRID_COLS, GRID_ROWS = 30, 30
+CELL_SIZE = 20
+PLAYER_SIZE = 12
+ENEMY_SIZE = PLAYER_SIZE
+PLAYER_SPEED = 2
+ENEMY_SPEED = 1.5
+INITIAL_ENEMIES = 30
+INITIAL_COLLECTIBLES = 5
+TIME_LIMIT = 120
+
+# Game States
+STATE_MENU = 0
+STATE_GAME = 1
+STATE_TUTORIAL = 2
+STATE_INTERACTIVE_TUTORIAL = 3
+STATE_GAME_OVER = 4
+STATE_WIN = 5
+STATE_CHARACTER_SELECT = 6
+
+class Game:
+    def __init__(self):
+        self.state = STATE_MENU
+        self.keys_pressed = set()
+        self.grid = []
+        self.player_x = self.player_y = 0
+        self.enemies = []
+        self.enemy_directions = []
+        self.collectibles = []
+        self.num_collected = 0
+        self.total_collectibles = INITIAL_COLLECTIBLES
+        self.timer = 0
+        self.difficulty = 1
+        self.current_color = 0
+        self.tutorial_step = 0
+        self.flashing_collectible_index = 0
+        
+        # Images
+        self.player_images = []
+        self.selection_images = []
+        self.wall_img = None
+        self.floor_img = None
+        
+        # Tutorial
+        self.tutorial_steps = [
+            {"text": "Press W to move UP", "key": "w"},
+            {"text": "Press S to move DOWN", "key": "s"},
+            {"text": "Press A to move LEFT", "key": "a"},
+            {"text": "Press D to move RIGHT", "key": "d"},
+            {"text": "Avoid the enemies!", "key": None}
+        ]
+        
+        self.setup()
+
+    def setup(self):
+        # Create fallback images
+        self.wall_img = self.create_color_image(CELL_SIZE, CELL_SIZE, color(100))
+        self.floor_img = self.create_color_image(CELL_SIZE, CELL_SIZE, color(200))
+        
+        # Load player images or create placeholders
+        for i in range(1, 7):
+            try:
+                img = loadImage("player_"+str(i)+".png")
+                img.resize(PLAYER_SIZE, PLAYER_SIZE)
+                self.player_images.append(img)
+                
+                big_img = loadImage("player_"+str(i)+".png")
+                big_img.resize(100, 100)
+                self.selection_images.append(big_img)
+            except:
+                # Create placeholder if image fails to load
+                small_img = self.create_color_image(PLAYER_SIZE, PLAYER_SIZE, color(0, 0, 255))
+                big_img = self.create_color_image(100, 100, color(0, 0, 255))
+                self.player_images.append(small_img)
+                self.selection_images.append(big_img)
+        
+        self.reset_game()
+
+    def create_color_image(self, w, h, c):
+        img = createImage(w, h, RGB)
+        img.loadPixels()
+        for i in range(len(img.pixels)):
+            img.pixels[i] = c
+        img.updatePixels()
+        return img
+
+    def reset_game(self):
+        self.grid = self.generate_maze()
+        self.player_x, self.player_y = self.cell_center(GRID_COLS // 2, GRID_ROWS // 2)
+        self.place_enemies(INITIAL_ENEMIES)
+        self.place_collectibles(INITIAL_COLLECTIBLES)
+        self.num_collected = 0
+        self.timer = 0
+        self.difficulty = 1
+        self.total_collectibles = INITIAL_COLLECTIBLES
+        if self.collectibles:
+            self.flashing_collectible_index = random.randint(0, len(self.collectibles) - 1)
+
+    def generate_maze(self):
+        maze = [[1 for _ in range(GRID_ROWS)] for _ in range(GRID_COLS)]
+        visited = [[False for _ in range(GRID_ROWS)] for _ in range(GRID_COLS)]
+
+        def carve(x, y):
+            maze[x][y] = 0
+            visited[x][y] = True
+            directions = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+            random.shuffle(directions)
+            for dx, dy in directions:
+                nx, ny = x + dx, y + dy
+                if 1 <= nx < GRID_COLS - 1 and 1 <= ny < GRID_ROWS - 1 and not visited[nx][ny]:
+                    maze[x + dx // 2][y + dy // 2] = 0
+                    carve(nx, ny)
+
+        carve(1, 1)
+        
+        # Add borders
+        for i in range(GRID_COLS):
+            maze[i][0] = maze[i][GRID_ROWS - 1] = 1
+        for j in range(GRID_ROWS):
+            maze[0][j] = maze[GRID_COLS - 1][j] = 1
+            
+        # Make center open
+        maze[GRID_COLS // 2][GRID_ROWS // 2] = 0
+        
+        # Remove some random walls
+        walls = [(x, y) for x in range(1, GRID_COLS - 1) for y in range(1, GRID_ROWS - 1) if maze[x][y] == 1]
+        for x, y in random.sample(walls, len(walls) // 5):
+            maze[x][y] = 0
+            
+        return maze
+
+    def cell_center(self, cx, cy):
+        return cx * CELL_SIZE + CELL_SIZE // 2, cy * CELL_SIZE + CELL_SIZE // 2
+
+    def place_enemies(self, count):
+        self.enemies = []
+        self.enemy_directions = []
+        
+        for _ in range(count):
+            placed = False
+            while not placed:
+                x = random.randint(1, GRID_COLS - 2)
+                y = random.randint(1, GRID_ROWS - 2)
+                if self.grid[x][y] == 0 and (x != GRID_COLS // 2 or y != GRID_ROWS // 2):
+                    pos = self.cell_center(x, y)
+                    if all(dist(pos[0], pos[1], e[0], e[1]) > 20 for e in self.enemies):
+                        self.enemies.append(pos)
+                        self.enemy_directions.append(random.choice(['up', 'down', 'left', 'right']))
+                        placed = True
+
+    def place_collectibles(self, count):
+        self.collectibles = []
+        for _ in range(count):
+            placed = False
+            while not placed:
+                x = random.randint(1, GRID_COLS - 2)
+                y = random.randint(1, GRID_ROWS - 2)
+                if self.grid[x][y] == 0:
+                    pos = self.cell_center(x, y)
+                    if dist(pos[0], pos[1], self.player_x, self.player_y) > 20:
+                        self.collectibles.append(pos)
+                        placed = True
+
+    def draw(self):
+        if self.state == STATE_MENU:
+            self.draw_menu()
+        elif self.state == STATE_GAME:
+            self.run_game()
+        elif self.state == STATE_TUTORIAL:
+            self.draw_tutorial()
+        elif self.state == STATE_INTERACTIVE_TUTORIAL:
+            self.run_interactive_tutorial()
+        elif self.state == STATE_GAME_OVER:
+            self.draw_game_over()
+        elif self.state == STATE_WIN:
+            self.draw_win()
+        elif self.state == STATE_CHARACTER_SELECT:
+            self.draw_character_select()
+
+    def run_game(self):
+        # Update timer
+        self.timer += 0.04
+        time_left = max(0, TIME_LIMIT - int(self.timer))
+        
+        # Draw HUD
+        fill(255)
+        textSize(20)
+        textAlign(LEFT, TOP)
+        text("Collected: "+str(self.num_collected/self.total_collectibles), 20, 20)
+        text("Time: "+str(time_left), 20, 50)
+        
+        # Game logic
+        self.move_player()
+        self.move_enemies()
+        
+        # Draw game
+        offset_x = (SCREEN_WIDTH - GRID_COLS * CELL_SIZE) // 2
+        offset_y = (SCREEN_HEIGHT - GRID_ROWS * CELL_SIZE) // 2 - 30
+        
+        self.draw_grid(offset_x, offset_y)
+        self.draw_collectibles(offset_x, offset_y)
+        self.draw_player(offset_x, offset_y)
+        self.draw_enemies(offset_x, offset_y)
+        
+        # Check game conditions
+        if time_left <= 0:
+            self.state = STATE_GAME_OVER
+            return
+            
+        for ex, ey in self.enemies:
+            if self.check_collision(self.player_x, self.player_y, PLAYER_SIZE, ex, ey, ENEMY_SIZE):
+                self.state = STATE_GAME_OVER
+                return
+                
+        if self.num_collected >= self.total_collectibles:
+            if self.difficulty < 5:
+                self.increase_difficulty()
+            else:
+                self.state = STATE_WIN
+
+    def increase_difficulty(self):
+        self.difficulty += 1
+        new_enemies = int(INITIAL_ENEMIES * (1.5 ** (self.difficulty - 1)))
+        self.total_collectibles = INITIAL_COLLECTIBLES + 5 * (self.difficulty - 1)
+        self.num_collected = 0
+        self.place_enemies(new_enemies)
+        self.place_collectibles(self.total_collectibles)
+        self.timer = max(self.timer, TIME_LIMIT - 30)
+
+    def draw_grid(self, offset_x, offset_y):
+        for x in range(GRID_COLS):
+            for y in range(GRID_ROWS):
+                if self.grid[x][y] == 0:
+                    image(self.floor_img, offset_x + x * CELL_SIZE, offset_y + y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                else:
+                    image(self.wall_img, offset_x + x * CELL_SIZE, offset_y + y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+
+    def draw_collectibles(self, offset_x, offset_y):
+        for i, (cx, cy) in enumerate(self.collectibles):
+            if i == self.flashing_collectible_index and (frameCount // 15) % 2 == 0:
+                fill(0, 255, 0)
+            else:
+                fill(0)
+            ellipse(offset_x + cx, offset_y + cy, 10, 10)
+
+    def draw_player(self, offset_x, offset_y):
+        imageMode(CENTER)
+        image(self.player_images[self.current_color], offset_x + self.player_x, offset_y + self.player_y)
+        imageMode(CORNER)
+
+    def draw_enemies(self, offset_x, offset_y):
+        fill(255, 0, 0)
+        for ex, ey in self.enemies:
+            ellipse(offset_x + ex, offset_y + ey, ENEMY_SIZE, ENEMY_SIZE)
+
+    def move_player(self):
+        if self.state != STATE_GAME and self.state != STATE_INTERACTIVE_TUTORIAL:
+            return
+            
+        dx = dy = 0
+        if 'w' in self.keys_pressed:
+            dy -= PLAYER_SPEED
+        if 's' in self.keys_pressed:
+            dy += PLAYER_SPEED
+        if 'a' in self.keys_pressed:
+            dx -= PLAYER_SPEED
+        if 'd' in self.keys_pressed:
+            dx += PLAYER_SPEED
+        
+        # Try X movement first
+        if dx != 0 and self.can_move(self.player_x + dx, self.player_y, PLAYER_SIZE):
+            self.player_x += dx
+        
+        # Then try Y movement
+        if dy != 0 and self.can_move(self.player_x, self.player_y + dy, PLAYER_SIZE):
+            self.player_y += dy
+        
+        # Keep player within bounds
+        self.player_x = constrain(self.player_x, PLAYER_SIZE//2, GRID_COLS * CELL_SIZE - PLAYER_SIZE//2)
+        self.player_y = constrain(self.player_y, PLAYER_SIZE//2, GRID_ROWS * CELL_SIZE - PLAYER_SIZE//2)
+        
+        self.check_collectibles()
+
+    def can_move(self, x, y, size):
+        # Check all four corners of the player's bounding box
+        corners = [
+            (x - size//2, y - size//2),  # top-left
+            (x + size//2, y - size//2),  # top-right
+            (x - size//2, y + size//2),  # bottom-left
+            (x + size//2, y + size//2)   # bottom-right
+        ]
+        
+        for px, py in corners:
+            grid_x = int(px) // CELL_SIZE
+            grid_y = int(py) // CELL_SIZE
+            
+            # Check if out of bounds or hitting a wall
+            if (grid_x < 0 or grid_x >= GRID_COLS or 
+                grid_y < 0 or grid_y >= GRID_ROWS or 
+                self.grid[grid_x][grid_y] == 1):
+                return False
+        return True
+
+    def move_enemies(self):
+        for i in range(len(self.enemies)):
+            if frameCount % 20 == 0:
+                self.enemy_directions[i] = random.choice(['up', 'down', 'left', 'right'])
+                
+            dx = dy = 0
+            if self.enemy_directions[i] == 'up':
+                dy = -ENEMY_SPEED
+            elif self.enemy_directions[i] == 'down':
+                dy = ENEMY_SPEED
+            elif self.enemy_directions[i] == 'left':
+                dx = -ENEMY_SPEED
+            elif self.enemy_directions[i] == 'right':
+                dx = ENEMY_SPEED
+                
+            x, y = self.enemies[i]
+            if self.can_move(x + dx, y + dy, ENEMY_SIZE):
+                self.enemies[i] = (x + dx, y + dy)
+
+    def check_collectibles(self):
+        for i, (cx, cy) in enumerate(self.collectibles[:]):
+            if dist(self.player_x, self.player_y, cx, cy) < 10:
+                if i == self.flashing_collectible_index:
+                    self.num_collected += 1
+                self.collectibles.pop(i)
+                if self.collectibles:
+                    self.flashing_collectible_index = random.randint(0, len(self.collectibles) - 1)
+                break
+
+    def check_collision(self, x1, y1, size1, x2, y2, size2):
+        return dist(x1, y1, x2, y2) < (size1 + size2) / 2
+
+    def draw_tutorial(self):
+        background(220)
+        fill(0)
+        textAlign(CENTER)
+        textSize(40)
+        text("Tutorial", SCREEN_WIDTH/2, 80)
+        textSize(25)
+        lines = [
+            "Controls:",
+            "- Use W, A, S, D to move.",
+            "- Avoid walls and the enemy.",
+            "- Only collect the flashing green cube!",
+            "- If the enemy touches you, you lose.",
+            "",
+            "Click to return to menu."
+        ]
+        for i, line in enumerate(lines):
+            text(line, SCREEN_WIDTH/2, 150 + i * 35)
+        
+    def draw_character_select(self):
+        # Semi-transparent overlay
+        fill(0, 150)
+        rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+        
+        fill(255)
+        textSize(40)
+        textAlign(CENTER, CENTER)
+        text("Select Your Character", SCREEN_WIDTH/2, 100)
+        
+        # Draw character options
+        for i in range(len(self.selection_images)):
+            x = SCREEN_WIDTH/2 - 200 + (i % 3) * 200
+            y = SCREEN_HEIGHT/2 - 150 + (i // 3) * 200
+            
+            # Highlight selected character
+            if i == self.current_color:
+                stroke(255)
+                strokeWeight(4)
+                noFill()
+                rect(x - 15, y - 15, 130, 130)
+                noStroke()
+    
+            image(self.selection_images[i], x, y)
+        
+        # Back button
+        fill(255, 0, 0)
+        rect(SCREEN_WIDTH/2 - 100, SCREEN_HEIGHT - 100, 200, 50)
+        fill(255)
+        textSize(30)
+        text("Back", SCREEN_WIDTH/2, SCREEN_HEIGHT - 75)
+    
+    def draw_game_over(self):
+        background('#FF0000')
+        textAlign(CENTER, CENTER)
+        fill('#080808')
+        textSize(60)
+        text("GAME OVER", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 50)
+        textSize(30)
+        text("Click to return to menu.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 20)
+    
+    def draw_win(self):
+        background(0, 200, 0)
+        fill(255)
+        textAlign(CENTER, CENTER)
+        textSize(60)
+        text("YOU WIN!", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 50)
+        textSize(30)
+        text("Click to return to menu.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 20)
+    
+    def run_interactive_tutorial(self):
+        time_left = max(0, TIME_LIMIT - int(self.timer))
+        
+        # Draw HUD
+        fill(255)
+        textSize(20)
+        textAlign(LEFT, BOTTOM)
+        text("Time Left:"+str(time_left), 10, SCREEN_HEIGHT - 10)
+        
+        # Game elements
+        offset_x = (SCREEN_WIDTH - GRID_COLS * CELL_SIZE) // 2
+        offset_y = (SCREEN_HEIGHT - GRID_ROWS * CELL_SIZE) // 2 - 30
+        
+        self.draw_grid(offset_x, offset_y)
+        self.draw_player(offset_x, offset_y)
+        
+        # Tutorial instructions
+        if self.tutorial_step < len(self.tutorial_steps):
+            fill(0)
+            textAlign(CENTER, CENTER)
+            textSize(30)
+            text(self.tutorial_steps[self.tutorial_step]["text"], 
+                SCREEN_WIDTH // 2, SCREEN_HEIGHT - 35)
+        else:
+            self.state = STATE_MENU
+
+    def draw_menu(self):
+        background(102)
+        fill(0, 100, 255)
+        textSize(40)
+        textAlign(CENTER, CENTER)
+        text("MAZE GAME", SCREEN_WIDTH/2, 100)
+        
+        # Draw buttons with hover effect
+        buttons = [
+            (SCREEN_WIDTH/2 - 100, 200, 200, 50, "Start Game", STATE_GAME),
+            (SCREEN_WIDTH/2 - 100, 275, 200, 50, "Tutorial", STATE_TUTORIAL),
+            (SCREEN_WIDTH/2 - 100, 350, 200, 50, "Interactive Tutorial", STATE_INTERACTIVE_TUTORIAL),
+            (SCREEN_WIDTH/2 - 100, 425, 200, 50, "Character Select", STATE_CHARACTER_SELECT),
+            (SCREEN_WIDTH/2 - 100, 500, 200, 50, "Quit", -1)
+        ]
+        
+        for x, y, w, h, label, action in buttons:
+            self.draw_button(x, y, w, h, label, action)
+
+    def draw_button(self, x, y, w, h, label, action):
+        hover = x <= mouseX <= x + w and y <= mouseY <= y + h
+        fill(0, 100 if hover else 0, 255)
+        rect(x, y, w, h, 10)
+        fill(255)
+        textSize(20)
+        textAlign(CENTER, CENTER)
+        text(label, x + w/2, y + h/2)
+
+# Main Processing functions
+game = Game()
+
+def setup():
+    global game
+    size(SCREEN_WIDTH, SCREEN_HEIGHT)
+    game = Game()
+
+def draw():
+    global game
+    game.draw()
+
+def mousePressed():
+    global game
+    if game.state == STATE_MENU:
+        # Check Start Game button
+        if SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and 200 <= mouseY <= 250:
+            game.reset_game()
+            game.state = STATE_GAME
+        
+        # Check Tutorial button
+        elif SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and 275 <= mouseY <= 325:
+            game.state = STATE_TUTORIAL
+        
+        # Check Interactive Tutorial button
+        elif SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and 350 <= mouseY <= 400:
+            game.reset_game()
+            game.tutorial_step = 0
+            game.state = STATE_INTERACTIVE_TUTORIAL
+        
+        # Check Character Select button
+        elif SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and 425 <= mouseY <= 475:
+            game.state = STATE_CHARACTER_SELECT
+        
+        # Check Quit button
+        elif SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and 500 <= mouseY <= 550:
+            exit()
+    
+    # Return to menu from these states
+    elif game.state in [STATE_GAME_OVER, STATE_WIN, STATE_TUTORIAL]:
+        game.state = STATE_MENU
+    
+    # Character selection screen
+    elif game.state == STATE_CHARACTER_SELECT:
+        # Check character selection
+        for i in range(len(game.selection_images)):
+            x = SCREEN_WIDTH/2 - 200 + (i % 3) * 200
+            y = SCREEN_HEIGHT/2 - 150 + (i // 3) * 200
+            if x <= mouseX <= x + 100 and y <= mouseY <= y + 100:
+                game.current_color = i
+        
+        # Check back button
+        if SCREEN_WIDTH/2 - 100 <= mouseX <= SCREEN_WIDTH/2 + 100 and SCREEN_HEIGHT - 100 <= mouseY <= SCREEN_HEIGHT - 50:
+            game.state = STATE_MENU
+
+def keyPressed():
+    global game
+    if key == ESC:
+        key = 0  # Disable ESC key from quitting
+    game.keys_pressed.add(str(key).lower())
+    
+    if game.state == STATE_INTERACTIVE_TUTORIAL and game.tutorial_step < len(game.tutorial_steps):
+        step = game.tutorial_steps[game.tutorial_step]
+        if step["key"] is None or str(key).lower() == step["key"]:
+            game.tutorial_step += 1
+
+def keyReleased():
+    global game
+    game.keys_pressed.discard(str(key).lower())
